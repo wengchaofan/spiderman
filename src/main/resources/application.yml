@@ -1,0 +1,14 @@
+server:
+  port: 9999
+  servlet:
+    context-path: /
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://121.5.222.242:3306/cloud?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: introcks
+
+mybatis-plus:
+  type-aliases-package: com.wcf.entity

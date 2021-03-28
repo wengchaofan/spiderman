@@ -1,11 +1,20 @@
 package wcf.entity;
 
 
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.Table;
+
 /**
  * @author 43574
  */
-public class Massage {
+//@TableName("zhi_hu_massage")
+@Entity
+@Table(name = "zhi_hu_massage")
+public class ZhiHuMassage {
 
+    @Id
+    private long id;
     private String title;
     private int attention;
     private int browse;
@@ -19,14 +28,22 @@ public class Massage {
         this.url = url;
     }
 
-    public Massage() {
+    public ZhiHuMassage() {
 
     }
 
-    public Massage(String title, int attention, int browse) {
+    public ZhiHuMassage(String title, int attention, int browse) {
         this.title = title;
         this.attention = attention;
         this.browse = browse;
+    }
+
+    public long getId() {
+        return id;
+    }
+
+    public void setId(long id) {
+        this.id = id;
     }
 
     public String getTitle() {
