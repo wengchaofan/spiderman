@@ -28,9 +28,9 @@ import java.util.stream.Collectors;
 public class ZhihuPageProcessor implements PageProcessor {
     private Site site = Site.me().setRetryTimes(3).setSleepTime(1000);
 
-    private static final String FAVLISTS = "https://www.zhihu.com/api/v4/favlists/discover?limit=500&offset=20";
+    private static final String FAVLISTS = "https://www.zhihu.com/api/v4/favlists/discover?limit=1000&offset=20";
     private static final String EXPLORE = "https://www.zhihu.com/explore";
-    private static final String API = "https://www.zhihu.com/api/v4/collections/${id}/items?offset=0&limit=200";
+    private static final String API = "https://www.zhihu.com/api/v4/collections/${id}/items?offset=0&limit=800";
     private static final String COLLECTION = "https://www.zhihu.com/collection/";
     private static final String QUESTION = "https://www.zhihu.com/question/";
     private static final int QUESTION_ID_INDEX = "https://www.zhihu.com/question/".lastIndexOf('/') + 1;
@@ -155,7 +155,8 @@ public class ZhihuPageProcessor implements PageProcessor {
         }
         data.add(EXPLORE);
         String[] objects = urls.toArray(new String[0]);
-        Spider.create(new ZhihuPageProcessor()).addUrl(objects).runAsync();
+        Spider.create(new ZhihuPageProcessor())
+                .thread(2).addUrl(objects).runAsync();
     }
 
     /**
