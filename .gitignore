@@ -63,5 +63,5 @@ target
 .externalToolBuilders
 
 #IDEA
-/.idea/*
+.idea/*
 *.iml
