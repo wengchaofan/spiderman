@@ -65,3 +65,5 @@ target
 #IDEA
 .idea/*
 *.iml
+.idea
+.idea/*.xml

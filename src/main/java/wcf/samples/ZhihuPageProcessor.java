@@ -26,11 +26,11 @@ import java.util.stream.Collectors;
  */
 @Component
 public class ZhihuPageProcessor implements PageProcessor {
-    private Site site = Site.me().setRetryTimes(3).setSleepTime(1000);
+    private Site site = Site.me().setRetryTimes(3).setSleepTime(2000);
 
     private static final String FAVLISTS = "https://www.zhihu.com/api/v4/favlists/discover?limit=1000&offset=20";
     private static final String EXPLORE = "https://www.zhihu.com/explore";
-    private static final String API = "https://www.zhihu.com/api/v4/collections/${id}/items?offset=0&limit=800";
+    private static final String API = "https://www.zhihu.com/api/v4/collections/${id}/items?offset=0&limit=200";
     private static final String COLLECTION = "https://www.zhihu.com/collection/";
     private static final String QUESTION = "https://www.zhihu.com/question/";
     private static final int QUESTION_ID_INDEX = "https://www.zhihu.com/question/".lastIndexOf('/') + 1;
@@ -50,9 +50,9 @@ public class ZhihuPageProcessor implements PageProcessor {
         if (url.contains(COLLECTION)) {
             page.addTargetRequests(getUrls(url));
         }
-        if(url.contains(QUESTION)){
+        if (url.contains(QUESTION)) {
             boolean record = dealQuestionId(url);
-            if(record){
+            if (record) {
                 return;
             }
         }
@@ -90,30 +90,32 @@ public class ZhihuPageProcessor implements PageProcessor {
 
     /**
      * 是否已经处理过该问题
+     *
      * @param url 包含QuestionId的URL
      * @return
      */
-    private boolean dealQuestionId(String url){
+    private boolean dealQuestionId(String url) {
 
         Long id = getQuestionID(url);
-        if (ids.contains(id)){
+        if (ids.contains(id)) {
             return true;
         }
         ids.add(id);
         return false;
     }
 
-    private Long getQuestionID(String url){
+    private Long getQuestionID(String url) {
         String substring = url.substring(QUESTION_ID_INDEX);
-        if(substring.contains("/")){
+        if (substring.contains("/")) {
             return Long.valueOf(substring.substring(0, substring.indexOf('/')));
-        }else {
+        } else {
             return Long.valueOf(substring);
         }
     }
 
     /**
-     *  获取收藏夹的中问题的URL
+     * 获取收藏夹的中问题的URL
+     *
      * @param collection 收藏夹url
      * @return
      */
@@ -121,16 +123,30 @@ public class ZhihuPageProcessor implements PageProcessor {
         int n = collection.lastIndexOf("/") + 1;
         String id = collection.substring(n);
         String api = API.replace("${id}", id);
+        return getUrlsFromApi(api);
+    }
+
+    /**
+     *  获取Api接口中的
+     * @param api
+     * @return
+     */
+    private List<String> getUrlsFromApi(String api) {
         JSONObject httpContent = HttpUtils.getHttpContent(api);
         if (httpContent == null) {
             return new ArrayList<>(0);
         }
         JSONArray data = httpContent.getJSONArray("data");
+        boolean isEnd = httpContent.getJSONObject("paging").getBoolean("is_end");
         List<String> urls = new ArrayList<>();
         for (int i = 0; i < data.size(); i++) {
             JSONObject jsonObject = data.getJSONObject(i).getJSONObject("content");
             String url = jsonObject.getString("url");
             urls.add(url);
+        }
+        if (!isEnd) {
+            String apiNext = httpContent.getJSONObject("paging").getString("next");
+            urls.addAll(getUrlsFromApi(apiNext));
         }
         return urls;
     }
@@ -156,7 +172,7 @@ public class ZhihuPageProcessor implements PageProcessor {
         data.add(EXPLORE);
         String[] objects = urls.toArray(new String[0]);
         Spider.create(new ZhihuPageProcessor())
-                .thread(2).addUrl(objects).runAsync();
+                .thread(1).addUrl(objects).runAsync();
     }
 
     /**
