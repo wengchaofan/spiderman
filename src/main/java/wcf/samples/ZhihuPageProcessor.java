@@ -2,7 +2,6 @@ package wcf.samples;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import org.assertj.core.util.Lists;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import us.codecraft.webmagic.Page;
@@ -18,7 +17,9 @@ import javax.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -26,7 +27,7 @@ import java.util.stream.Collectors;
  */
 @Component
 public class ZhihuPageProcessor implements PageProcessor {
-    private Site site = Site.me().setRetryTimes(3).setSleepTime(2000);
+    private final Site site = Site.me().setRetryTimes(3).setSleepTime(2000);
 
     private static final String FAVLISTS = "https://www.zhihu.com/api/v4/favlists/discover?limit=1000&offset=20";
     private static final String EXPLORE = "https://www.zhihu.com/explore";
@@ -39,7 +40,7 @@ public class ZhihuPageProcessor implements PageProcessor {
 
     private static volatile ZhiHuMassageDao staticZhiHuMassageDao;
 
-    private static final Set<Long> ids = new ConcurrentSkipListSet<>();
+    private static final Set<Long> IDS = new ConcurrentSkipListSet<>();
 
     public ZhihuPageProcessor() {
     }
@@ -56,7 +57,8 @@ public class ZhihuPageProcessor implements PageProcessor {
                 return;
             }
         }
-        page.addTargetRequests(page.getHtml().links().regex("https://www.zhihu.com/question/\\d+$").all());
+        List<String> questionUrl = questionFilter(page.getHtml().links().regex("https://www.zhihu.com/question/\\d+$").all());
+        page.addTargetRequests(questionUrl);
         page.addTargetRequests(page.getHtml().links().regex("https://www.zhihu.com/answer/\\d+$").all());
         page.addTargetRequests(page.getHtml().links().regex("https://www.zhihu.com/collection/.*$").all());
         Selectable itemInner = page.getHtml().css("div.NumberBoard-itemInner");
@@ -71,7 +73,7 @@ public class ZhihuPageProcessor implements PageProcessor {
         ZhiHuMassage zhiHuMassage = new ZhiHuMassage();
         zhiHuMassage.setTitle(title);
         zhiHuMassage.setUrl(url);
-        zhiHuMassage.setId(getQuestionID(url));
+        zhiHuMassage.setId(getQuestionId(url));
         nodes.forEach(node -> {
             String name = node.xpath("div[@class='NumberBoard-itemName']/text()").toString();
             String value = node.xpath("strong[@class='NumberBoard-itemValue']/text()").toString().replace(",", "");
@@ -88,23 +90,28 @@ public class ZhihuPageProcessor implements PageProcessor {
         page.putField("title", title);
     }
 
+    private List<String> questionFilter(List<String> questionUrls) {
+        return questionUrls.stream().filter(url -> !IDS.contains(getQuestionId(url)))
+                .collect(Collectors.toList());
+    }
+
     /**
      * 是否已经处理过该问题
      *
      * @param url 包含QuestionId的URL
-     * @return
+     * @return  是否已经处理过该问题
      */
     private boolean dealQuestionId(String url) {
 
-        Long id = getQuestionID(url);
-        if (ids.contains(id)) {
+        Long id = getQuestionId(url);
+        if (IDS.contains(id)) {
             return true;
         }
-        ids.add(id);
+        IDS.add(id);
         return false;
     }
 
-    private Long getQuestionID(String url) {
+    private Long getQuestionId(String url) {
         String substring = url.substring(QUESTION_ID_INDEX);
         if (substring.contains("/")) {
             return Long.valueOf(substring.substring(0, substring.indexOf('/')));
@@ -117,7 +124,7 @@ public class ZhihuPageProcessor implements PageProcessor {
      * 获取收藏夹的中问题的URL
      *
      * @param collection 收藏夹url
-     * @return
+     * @return  收藏夹的中问题的URL
      */
     private List<String> getUrls(String collection) {
         int n = collection.lastIndexOf("/") + 1;
@@ -127,9 +134,10 @@ public class ZhihuPageProcessor implements PageProcessor {
     }
 
     /**
-     *  获取Api接口中的
-     * @param api
-     * @return
+     * 获取Api接口返回的url
+     *
+     * @param api  api接口
+     * @return Api接口返回的url
      */
     private List<String> getUrlsFromApi(String api) {
         JSONObject httpContent = HttpUtils.getHttpContent(api);
@@ -158,6 +166,11 @@ public class ZhihuPageProcessor implements PageProcessor {
 
     @PostConstruct
     public void startUp() {
+        staticZhiHuMassageDao = zhihuMassageDao;
+        CompletableFuture.runAsync(this::spiderRun);
+    }
+
+    private void spiderRun(){
         getAllIds();
         JSONObject jsonObject = HttpUtils.getHttpContent(FAVLISTS);
         assert jsonObject != null;
@@ -172,7 +185,13 @@ public class ZhihuPageProcessor implements PageProcessor {
         data.add(EXPLORE);
         String[] objects = urls.toArray(new String[0]);
         Spider.create(new ZhihuPageProcessor())
-                .thread(1).addUrl(objects).runAsync();
+                .thread(1).addUrl(objects).run();
+        try {
+            TimeUnit.HOURS.sleep(5);
+            spiderRun();
+        }catch (Exception e){
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -180,9 +199,7 @@ public class ZhihuPageProcessor implements PageProcessor {
      */
     private void getAllIds() {
 
-        Iterable<ZhiHuMassage> zhiHuMassages = zhihuMassageDao.findAll();
-        staticZhiHuMassageDao = zhihuMassageDao;
-        ArrayList<ZhiHuMassage> objects = Lists.newArrayList(zhiHuMassages);
-        ids.addAll(objects.stream().map(ZhiHuMassage::getId).collect(Collectors.toList()));
+        List<Long> idList = zhihuMassageDao.getIds();
+        IDS.addAll(idList);
     }
 }
