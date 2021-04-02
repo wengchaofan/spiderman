@@ -56,14 +56,14 @@ work
 .mvnclasspath
 .tomcatplugin
 .#webclasspath
-.project
 rebel.xml
 target
 .settings
 .externalToolBuilders
 
 #IDEA
-.idea/*
+../spiderman/.idea
+spaderman.iml
 *.iml
 .idea
 .idea/*.xml

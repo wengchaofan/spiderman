@@ -31,7 +31,9 @@ public class ZhihuPageProcessor implements PageProcessor {
 
     private static final String FAVLISTS = "https://www.zhihu.com/api/v4/favlists/discover?limit=1000&offset=20";
     private static final String EXPLORE = "https://www.zhihu.com/explore";
-    private static final String API = "https://www.zhihu.com/api/v4/collections/${id}/items?offset=0&limit=200";
+    private static final String COLLECTION_API = "https://www.zhihu.com/api/v4/collections/${id}/items?offset=0&limit=200";
+    private static final String QUESTION_SIMILAR_API = "https://www.zhihu.com/api/v4/questions/${id}/similar-questions?limit=5";
+    private static final String QUESTION_API = "https://www.zhihu.com/api/v4/questions/{id}}";
     private static final String COLLECTION = "https://www.zhihu.com/collection/";
     private static final String QUESTION = "https://www.zhihu.com/question/";
     private static final int QUESTION_ID_INDEX = "https://www.zhihu.com/question/".lastIndexOf('/') + 1;
@@ -90,6 +92,18 @@ public class ZhihuPageProcessor implements PageProcessor {
         page.putField("title", title);
     }
 
+    private void getSimilarQuestions(List<Long> questionIds){
+        questionIds.forEach(id ->{
+            String api = QUESTION_SIMILAR_API.replace("${id}", id.toString());
+            JSONObject httpContent = HttpUtils.getHttpContent(api);
+            JSONArray data = httpContent.getJSONArray("data");
+            for (int i = 0; i < data.size(); i++) {
+                JSONObject jsonObject = data.getJSONObject(i);
+            }
+        });
+
+    }
+
     private List<String> questionFilter(List<String> questionUrls) {
         return questionUrls.stream().filter(url -> !IDS.contains(getQuestionId(url)))
                 .collect(Collectors.toList());
@@ -129,7 +143,7 @@ public class ZhihuPageProcessor implements PageProcessor {
     private List<String> getUrls(String collection) {
         int n = collection.lastIndexOf("/") + 1;
         String id = collection.substring(n);
-        String api = API.replace("${id}", id);
+        String api = COLLECTION_API.replace("${id}", id);
         return getUrlsFromApi(api);
     }
 
