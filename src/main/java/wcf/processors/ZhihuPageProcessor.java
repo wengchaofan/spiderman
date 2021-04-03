@@ -1,8 +1,11 @@
-package wcf.samples;
+package wcf.processors;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import us.codecraft.webmagic.Page;
 import us.codecraft.webmagic.Site;
@@ -14,12 +17,11 @@ import wcf.entity.ZhiHuMassage;
 import wcf.utils.HttpUtils;
 
 import javax.annotation.PostConstruct;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -27,7 +29,7 @@ import java.util.stream.Collectors;
  */
 @Component
 public class ZhihuPageProcessor implements PageProcessor {
-    private final Site site = Site.me().setRetryTimes(3).setSleepTime(2000);
+    private final Site site = Site.me().setRetryTimes(3).setSleepTime(1500);
 
     private static final String FAVLISTS = "https://www.zhihu.com/api/v4/favlists/discover?limit=1000&offset=20";
     private static final String EXPLORE = "https://www.zhihu.com/explore";
@@ -37,8 +39,12 @@ public class ZhihuPageProcessor implements PageProcessor {
     private static final String COLLECTION = "https://www.zhihu.com/collection/";
     private static final String QUESTION = "https://www.zhihu.com/question/";
     private static final int QUESTION_ID_INDEX = "https://www.zhihu.com/question/".lastIndexOf('/') + 1;
+
+    @Value("${spider.zhihu.favlists-discover}")
+    private boolean spiderFavlistsDiscover;
     @Autowired
     private ZhiHuMassageDao zhihuMassageDao;
+    private static final Logger LOGGER = LoggerFactory.getLogger(ZhihuPageProcessor.class);
 
     private static volatile ZhiHuMassageDao staticZhiHuMassageDao;
 
@@ -51,7 +57,7 @@ public class ZhihuPageProcessor implements PageProcessor {
     public void process(Page page) {
         String url = page.getRequest().getUrl();
         if (url.contains(COLLECTION)) {
-            page.addTargetRequests(getUrls(url));
+            page.addTargetRequests(getUrlsFromCollection(url));
         }
         if (url.contains(QUESTION)) {
             boolean record = dealQuestionId(url);
@@ -92,16 +98,30 @@ public class ZhihuPageProcessor implements PageProcessor {
         page.putField("title", title);
     }
 
-    private void getSimilarQuestions(List<Long> questionIds){
-        questionIds.forEach(id ->{
+    private Set<String> getSimilarQuestions(List<Long> questionIds) {
+        Set<String> urls = new HashSet<>(questionIds.size());
+        AtomicInteger atomicInteger = new AtomicInteger(questionIds.size());
+        questionIds.forEach(id -> {
             String api = QUESTION_SIMILAR_API.replace("${id}", id.toString());
             JSONObject httpContent = HttpUtils.getHttpContent(api);
-            JSONArray data = httpContent.getJSONArray("data");
-            for (int i = 0; i < data.size(); i++) {
-                JSONObject jsonObject = data.getJSONObject(i);
+            if (httpContent != null) {
+                JSONArray data = httpContent.getJSONArray("data");
+                for (int i = 0; i < data.size(); i++) {
+                    JSONObject jsonObject = data.getJSONObject(i);
+                    String similarQuestionId = jsonObject.getString("id");
+                    if (!IDS.contains(Long.valueOf(similarQuestionId))) {
+                        urls.add(QUESTION + similarQuestionId);
+                    }
+                }
+                LOGGER.info("剩余获取相似问题数量：{}", atomicInteger.decrementAndGet());
+                try {
+                    TimeUnit.MILLISECONDS.sleep(1500);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
         });
-
+        return urls;
     }
 
     private List<String> questionFilter(List<String> questionUrls) {
@@ -113,7 +133,7 @@ public class ZhihuPageProcessor implements PageProcessor {
      * 是否已经处理过该问题
      *
      * @param url 包含QuestionId的URL
-     * @return  是否已经处理过该问题
+     * @return 是否已经处理过该问题
      */
     private boolean dealQuestionId(String url) {
 
@@ -138,9 +158,9 @@ public class ZhihuPageProcessor implements PageProcessor {
      * 获取收藏夹的中问题的URL
      *
      * @param collection 收藏夹url
-     * @return  收藏夹的中问题的URL
+     * @return 收藏夹的中问题的URL
      */
-    private List<String> getUrls(String collection) {
+    private List<String> getUrlsFromCollection(String collection) {
         int n = collection.lastIndexOf("/") + 1;
         String id = collection.substring(n);
         String api = COLLECTION_API.replace("${id}", id);
@@ -150,7 +170,7 @@ public class ZhihuPageProcessor implements PageProcessor {
     /**
      * 获取Api接口返回的url
      *
-     * @param api  api接口
+     * @param api api接口
      * @return Api接口返回的url
      */
     private List<String> getUrlsFromApi(String api) {
@@ -170,7 +190,8 @@ public class ZhihuPageProcessor implements PageProcessor {
             String apiNext = httpContent.getJSONObject("paging").getString("next");
             urls.addAll(getUrlsFromApi(apiNext));
         }
-        return urls;
+        return urls.parallelStream()
+                .filter(url -> !IDS.contains(getQuestionId(url))).collect(Collectors.toList());
     }
 
     @Override
@@ -184,28 +205,40 @@ public class ZhihuPageProcessor implements PageProcessor {
         CompletableFuture.runAsync(this::spiderRun);
     }
 
-    private void spiderRun(){
+    private void spiderRun() {
         getAllIds();
+        List<String> urls = new ArrayList<>(1024);
+        urls.add(EXPLORE);
+        if (spiderFavlistsDiscover) {
+            urls.addAll(getCollection());
+        }
+        ArrayList<Long> ids = new ArrayList<>(IDS);
+        Collections.shuffle(ids);
+        Set<String> similarQuestions = getSimilarQuestions(ids.subList(0, 1000));
+        urls.addAll(similarQuestions);
+        String[] objects = urls.toArray(new String[0]);
+        Spider.create(new ZhihuPageProcessor())
+                .thread(1).addUrl(objects).run();
+        try{
+            TimeUnit.MINUTES.sleep(10);
+        }catch (Exception e){
+            LOGGER.error("线程异常",e);
+        }
+        spiderRun();
+    }
+
+    private List<String> getCollection() {
+        List<String> urls = new ArrayList<>(500);
         JSONObject jsonObject = HttpUtils.getHttpContent(FAVLISTS);
         assert jsonObject != null;
         JSONArray data = jsonObject.getJSONArray("data");
-        List<String> urls = new ArrayList<>(520);
         for (int i = 0; i < data.size(); i++) {
             String url = data.getJSONObject(i).getString("url");
             String collection = url.substring(url.lastIndexOf('/') + 1);
             url = COLLECTION + collection;
             urls.add(url);
         }
-        data.add(EXPLORE);
-        String[] objects = urls.toArray(new String[0]);
-        Spider.create(new ZhihuPageProcessor())
-                .thread(1).addUrl(objects).run();
-        try {
-            TimeUnit.HOURS.sleep(5);
-            spiderRun();
-        }catch (Exception e){
-            e.printStackTrace();
-        }
+        return urls;
     }
 
     /**

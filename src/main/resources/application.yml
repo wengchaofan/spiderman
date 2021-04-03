@@ -10,7 +10,11 @@ spring:
     username: root
     password: introcks
   main:
-    web-application-type: none
+    web-application-type: SERVLET
+
+spider:
+  zhihu:
+    favlists-discover: false
 
 mybatis-plus:
   type-aliases-package: com.wcf.entity
