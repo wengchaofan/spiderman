@@ -184,7 +184,9 @@ public class ZhihuPageProcessor implements PageProcessor {
         for (int i = 0; i < data.size(); i++) {
             JSONObject jsonObject = data.getJSONObject(i).getJSONObject("content");
             String url = jsonObject.getString("url");
-            urls.add(url);
+            if(!url.contains("zhuanlan")){
+                urls.add(url);
+            }
         }
         if (!isEnd) {
             String apiNext = httpContent.getJSONObject("paging").getString("next");
@@ -202,14 +204,23 @@ public class ZhihuPageProcessor implements PageProcessor {
     @PostConstruct
     public void startUp() {
         staticZhiHuMassageDao = zhihuMassageDao;
-        CompletableFuture.runAsync(this::spiderRun);
+        CompletableFuture.runAsync(() -> {
+            while (true) {
+                try {
+                    spiderRun();
+                    TimeUnit.MINUTES.sleep(10);
+                } catch (Exception e) {
+                    LOGGER.error("异常异常", e);
+                }
+            }
+        });
     }
 
     private void spiderRun() {
         getAllIds();
         List<String> urls = new ArrayList<>(1024);
-        urls.add(EXPLORE);
         if (spiderFavlistsDiscover) {
+            urls.add(EXPLORE);
             urls.addAll(getCollection());
         }
         ArrayList<Long> ids = new ArrayList<>(IDS);
@@ -219,12 +230,6 @@ public class ZhihuPageProcessor implements PageProcessor {
         String[] objects = urls.toArray(new String[0]);
         Spider.create(new ZhihuPageProcessor())
                 .thread(1).addUrl(objects).run();
-        try{
-            TimeUnit.MINUTES.sleep(10);
-        }catch (Exception e){
-            LOGGER.error("线程异常",e);
-        }
-        spiderRun();
     }
 
     private List<String> getCollection() {
