@@ -208,8 +208,8 @@ public class ZhihuPageProcessor implements PageProcessor {
     private void spiderRun() {
         getAllIds();
         List<String> urls = new ArrayList<>(1024);
-        urls.add(EXPLORE);
         if (spiderFavlistsDiscover) {
+            urls.add(EXPLORE);
             urls.addAll(getCollection());
         }
         ArrayList<Long> ids = new ArrayList<>(IDS);

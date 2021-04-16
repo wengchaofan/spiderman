@@ -36,7 +36,6 @@ public class HttpUtils {
     public static JSONObject getHttpContent(String url) {
         HttpURLConnection httpURLConnection = null;
         try {
-            Properties systemProperties =System.getProperties();
             URL HttpsUrl = new URL(url);
             httpURLConnection = (HttpURLConnection) HttpsUrl.openConnection();
             httpURLConnection.setInstanceFollowRedirects(false);
